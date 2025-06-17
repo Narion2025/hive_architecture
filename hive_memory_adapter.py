@@ -5,6 +5,7 @@ import os
 from dotenv import load_dotenv
 from openai import OpenAI
 from pinecone import Pinecone, ServerlessSpec
+import yaml
 
 # 1. Umgebungsvariablen laden
 def load_env(env_path=".envALL.txt"):
@@ -23,16 +24,30 @@ def connect_pinecone():
     return pc
 
 # 3. Index vorbereiten
-def get_or_create_index(pc, index_name="hive-core", dimension=1536):
+def get_or_create_index(pc, index_name="hive-core", dimension=1536, region=None):
     existing = [i.name for i in pc.list_indexes()]
+    region = region or os.getenv("PINECONE_REGION", "us-west1")
     if index_name not in existing:
-        pc.create_index(
-            name=index_name,
-            dimension=dimension,
-            metric="cosine",
-            spec=ServerlessSpec(cloud="gcp", region="starter")
-        )
-        print("→ Neuer Index erstellt:", index_name)
+        try:
+            pc.create_index(
+                name=index_name,
+                dimension=dimension,
+                metric="cosine",
+                spec=ServerlessSpec(cloud="gcp", region=region)
+            )
+            print("→ Neuer Index erstellt:", index_name)
+        except Exception as e:
+            if region != "us-west1":
+                print("Region fehlerhaft, Fallback auf us-west1:", e)
+                pc.create_index(
+                    name=index_name,
+                    dimension=dimension,
+                    metric="cosine",
+                    spec=ServerlessSpec(cloud="gcp", region="us-west1")
+                )
+                print("→ Index mit Fallback erstellt:", index_name)
+            else:
+                raise
     else:
         print("→ Index gefunden:", index_name)
     return pc.Index(index_name)
@@ -49,6 +64,28 @@ def query_similar(index, text, top_k=3):
     vector = embed_text(text)
     results = index.query(vector=vector, top_k=top_k, include_metadata=True)
     return results
+
+# 6. Embedding speichern oder aktualisieren
+def upsert_text(index, text, metadata=None, id=None):
+    vector = embed_text(text)
+    if id is None:
+        id = str(hash(text))
+    index.upsert([
+        {
+            "id": id,
+            "values": vector,
+            "metadata": metadata or {},
+        }
+    ])
+    return id
+
+
+def load_memory_yaml(path):
+    """Read memory records from YAML file."""
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+    with open(path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
 
 # Einstiegspunkt
 if __name__ == "__main__":
