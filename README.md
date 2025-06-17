@@ -36,7 +36,7 @@ PINECONE_ENV=us-west1-gcp
 - **Assistant** – von OpenAI bereitgestellt; kann optional mit dem gleichen Speicher verknüpft werden.
 - **Pinecone Memory** – persistenter Vektor-Speicher für Embeddings und Metadaten.
 
-Durch die Verschmelzung von Custom GPT und Assistant entsteht ein gemeinsam nutzbares Wissensarchiv.
+Durch die Verschmelzung von Custom GPT und Assistant entsteht ein gemeinsam nutzbares Wissensarchiv. Der Memory Adapter prüft nun, ob alle benötigten Umgebungsvariablen gesetzt sind und kann auf Wunsch einen bestehenden Index löschen und neu erstellen.
 
 ## Nutzung
 
