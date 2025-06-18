@@ -4,8 +4,7 @@
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
-from pinecone import Pinecone, ServerlessSpec
-import yaml
+from pinecone import Pinecone
 
 # 1. Umgebungsvariablen laden
 def load_env(env_path=".envALL.txt"):
@@ -17,23 +16,40 @@ def load_env(env_path=".envALL.txt"):
 
 # 2. Pinecone-Verbindung herstellen (neue Syntax)
 def connect_pinecone():
+    """Return a Pinecone client using keys from the environment."""
     api_key = os.getenv("PINECONE_API_KEY")
-    environment = os.getenv("PINECONE_ENV")
+    if not api_key:
+        raise EnvironmentError("PINECONE_API_KEY nicht gesetzt")
+
+    environment = os.getenv("PINECONE_ENV", "us-west1-gcp")
+
     pc = Pinecone(api_key=api_key)
     print("Pinecone verbunden mit:", environment)
     return pc
 
 # 3. Index vorbereiten
-def get_or_create_index(pc, index_name="hive-core", dimension=1536, region=None):
+def get_or_create_index(pc, index_name="hive-core", dimension=1536, region=None, drop_old=False):
+    """Return a Pinecone index, creating it when necessary.
+
+    If ``drop_old`` is ``True`` an existing index with the same name will be
+    removed before a new one is created.
+    """
+
     existing = [i.name for i in pc.list_indexes()]
     region = region or os.getenv("PINECONE_REGION", "us-west1")
+
+    if index_name in existing and drop_old:
+        pc.delete_index(index_name)
+        existing.remove(index_name)
+        print("→ Alter Index gelöscht:", index_name)
+
     if index_name not in existing:
         try:
             pc.create_index(
                 name=index_name,
                 dimension=dimension,
                 metric="cosine",
-                spec=ServerlessSpec(cloud="gcp", region=region)
+                spec={"serverless": {"cloud": "gcp", "region": region}}
             )
             print("→ Neuer Index erstellt:", index_name)
         except Exception as e:
@@ -43,20 +59,23 @@ def get_or_create_index(pc, index_name="hive-core", dimension=1536, region=None)
                     name=index_name,
                     dimension=dimension,
                     metric="cosine",
-                    spec=ServerlessSpec(cloud="gcp", region="us-west1")
+                    spec={"serverless": {"cloud": "gcp", "region": "us-west1"}}
                 )
                 print("→ Index mit Fallback erstellt:", index_name)
             else:
                 raise
     else:
         print("→ Index gefunden:", index_name)
+
     return pc.Index(index_name)
 
 # 4. Embedding erzeugen (via OpenAI)
 def embed_text(text, model="text-embedding-3-small"):
-    client = OpenAI()
     api_key = os.getenv("OPENAI_API_KEY")
-    client.api_key = api_key
+    if not api_key:
+        raise EnvironmentError("OPENAI_API_KEY nicht gesetzt")
+
+    client = OpenAI(api_key=api_key)
     return client.embeddings.create(model=model, input=text).data[0].embedding
 
 # 5. Abfrage an Pinecone senden
@@ -80,12 +99,6 @@ def upsert_text(index, text, metadata=None, id=None):
     return id
 
 
-def load_memory_yaml(path):
-    """Read memory records from YAML file."""
-    if not os.path.exists(path):
-        raise FileNotFoundError(path)
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
 
 # Einstiegspunkt
 if __name__ == "__main__":
