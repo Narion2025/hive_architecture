@@ -4,8 +4,7 @@
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
-from pinecone import Pinecone, ServerlessSpec
-import yaml
+from pinecone import Pinecone
 
 # 1. Umgebungsvariablen laden
 def load_env(env_path=".envALL.txt"):
@@ -50,7 +49,7 @@ def get_or_create_index(pc, index_name="hive-core", dimension=1536, region=None,
                 name=index_name,
                 dimension=dimension,
                 metric="cosine",
-                spec=ServerlessSpec(cloud="gcp", region=region)
+                spec={"serverless": {"cloud": "gcp", "region": region}}
             )
             print("→ Neuer Index erstellt:", index_name)
         except Exception as e:
@@ -60,7 +59,7 @@ def get_or_create_index(pc, index_name="hive-core", dimension=1536, region=None,
                     name=index_name,
                     dimension=dimension,
                     metric="cosine",
-                    spec=ServerlessSpec(cloud="gcp", region="us-west1")
+                    spec={"serverless": {"cloud": "gcp", "region": "us-west1"}}
                 )
                 print("→ Index mit Fallback erstellt:", index_name)
             else:
@@ -100,12 +99,6 @@ def upsert_text(index, text, metadata=None, id=None):
     return id
 
 
-def load_memory_yaml(path):
-    """Read memory records from YAML file."""
-    if not os.path.exists(path):
-        raise FileNotFoundError(path)
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
 
 # Einstiegspunkt
 if __name__ == "__main__":
